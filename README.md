@@ -1,70 +1,96 @@
 # EyePACS-DL-Blockchain
+## Diabetic Retinopathy Early Diagnosis — Deep Learning + Blockchain Pipeline (v2)
 
-## Diabetic Retinopathy — Deep Learning + Blockchain Pipeline (v2)
+A restructured iteration of an earlier internship project combining Deep Learning and Blockchain for secure, tamper-proof diabetic retinopathy screening. This version rebuilds the DL component from scratch on a new dataset with a binary classification approach, and introduces a significantly improved smart contract architecture.
 
-This is a fresh, restructured iteration of an earlier internship project that combined Deep Learning with Blockchain for secure, tamper-proof diabetic retinopathy (DR) diagnosis. This version restarts the deep learning component from scratch on a new dataset, using a binary classification approach with the goal of building a stronger model before re-integrating blockchain.
-
-The previous version (multi-class, EfficientNetB3, APTOS dataset) is preserved separately and referenced in the comparison document for context.
-
----
-
-## Current Status
-
-This repository currently contains the **Deep Learning component only**. Blockchain integration is planned as the next phase, not yet implemented in this version.
+Previous version (v1): https://github.com/ksehar99/DL_Blockchain_Pipeline_For_DR_EarlyDiagnosis
 
 ---
 
-## Deep Learning Model
+## Status
 
-**Dataset:** EyePACS, pre-organized into binary classes (Nrdr = No DR, Rdr = DR), split into train/valid/test sets.
-- Train: 4,200 images (2,100 Nrdr / 2,100 Rdr — balanced)
-- Valid: 1,200 images (600 Nrdr / 600 Rdr)
-- Test: 600 images (merged folder, labels inferred per image)
-
-**Architecture:** Transfer learning on MobileNetV2 (ImageNet pretrained). Classification head: GlobalAveragePooling2D → Dense(256, relu) → Dropout(0.4) → Dense(1, sigmoid).
-
-**Preprocessing:** Images resized to 224x224, normalized using MobileNetV2's native `preprocess_input` ([-1, 1] range). No augmentation applied — dataset was already class-balanced and augmentation was found unnecessary at this dataset size.
-
-**Training:** Two-phase approach.
-- Phase 1: Base model frozen, only classification head trained. 10 epochs, Adam optimizer (lr=1e-3), binary crossentropy loss.
-- Phase 2: Last 30 layers of base model unfrozen, fine-tuned at lower learning rate (1e-5). Best Phase 1 checkpoint loaded before fine-tuning.
-
-Both phases used EarlyStopping (monitor: val_auc) and ReduceLROnPlateau.
-
-**Evaluation:** Test set evaluated using Test-Time Augmentation (TTA) — predictions averaged over original image plus horizontal flip, vertical flip, and both-flip variants.
-
-| Metric | Value |
+| Component | Status |
 |---|---|
-| Overall Accuracy | 0.81 |
-| Overall AUC | 0.874 |
-| Precision (DR) | 0.858 |
-| Recall (DR) | 0.743 |
-| Precision (No DR) | 0.774 |
-| Recall (No DR) | 0.877 |
+| Deep Learning Model | Complete |
+| Smart Contract | Written, pending deployment |
+| Web3 Python Bridge | In progress |
 
-**Confusion Matrix (test set, n=600):**
+---
 
-|  | Predicted No DR | Predicted DR |
+## Deep Learning
+
+**Dataset:** EyePACS — pre-organized into binary classes (Nrdr / Rdr), balanced across splits.
+
+| Split | No DR | DR | Total |
+|---|---|---|---|
+| Train | 2,100 | 2,100 | 4,200 |
+| Valid | 600 | 600 | 1,200 |
+| Test | — | — | 600 |
+
+**Model:** MobileNetV2 (ImageNet pretrained) with a custom classification head — GlobalAveragePooling2D → Dense(256, relu) → Dropout(0.5) → Dense(1, sigmoid).
+
+**Training:** Two-phase transfer learning.
+- Phase 1: Base frozen, head trained for 20 epochs (Adam lr=1e-3, binary crossentropy, EarlyStopping on val_auc)
+- Phase 2: Top 30 layers unfrozen, fine-tuned from Phase 1 best checkpoint (Adam lr=1e-5, 15 epochs)
+
+**Evaluation:** TTA (Test-Time Augmentation) — predictions averaged over original + 3 flipped variants. Final threshold set to 0.30 (tuned from default 0.50 to prioritize recall).
+
+| Metric | Default Threshold (0.50) | Final Threshold (0.30) |
 |---|---|---|
-| Actual No DR | 263 | 37 |
-| Actual DR | 77 | 223 |
+| DR Recall | 0.670 | **0.860** |
+| DR Precision | 0.878 | 0.727 |
+| No DR Recall | 0.877 | 0.677 |
+| Accuracy | 0.788 | 0.768 |
+| AUC | 0.874 | 0.870 |
+
+Threshold was lowered to 0.30 because in a clinical screening context, missing a DR case (false negative) carries significantly higher risk than a false alarm (false positive). At 0.30, the model catches 86% of actual DR cases.
 
 ---
 
-## Known Limitation
+## Smart Contract
 
-Recall on the DR (positive) class is 0.743 at the default 0.5 decision threshold — meaning roughly 1 in 4 actual DR cases are currently missed. For a screening tool, this is the most important metric to improve, since false negatives carry higher clinical risk than false positives. Threshold tuning (lowering the decision threshold below 0.5) is the planned next step to raise recall toward 0.90+, with an expected tradeoff in precision.
+**Network:** Private Ethereum network (Hardhat, Chain ID 1337, PoA consensus) — patient data never touches a public chain.
 
----
+**Contract:** `DRDiagnosisResults.sol`
 
-## Repository Structure
+**Architecture:**   
+Admin → registers patient + assigns doctor   
+Patient → gives/revokes consent    
+Doctor → uploads AI diagnosis + records own decision   
+Anyone authorized → verifies tamper-proof hash on-chain   
 
-- `notebooks/DR_DL_training.ipynb` — Data loading, preprocessing, two-phase MobileNetV2 training, TTA-based test evaluation.
-- `docs/PROGRESS.md` — Comparison between v1 (multi-class, EfficientNetB3) and v2 (binary, MobileNetV2), including rationale for changes.
+**Key features:**
+
+Role-based access control — three distinct roles (admin, doctor, patient) with enforced separation. Admin cannot upload diagnoses. Doctor cannot register patients. Patient consent cannot be given by anyone else.
+
+AI provenance logging — every on-chain diagnosis record includes the image hash, model version hash, prediction result, and confidence score. Any change to the image or model is detectable.
+
+Human-in-the-loop — AI prediction and doctor decision are two separate on-chain transactions. Doctor explicitly records whether they agreed with or overrode the model.
+
+Pending review tracking — every uploaded diagnosis is flagged as unreviewed until the doctor records their decision. `isReviewed()` and `DiagnosisUploaded` events allow off-chain monitoring without expensive on-chain loops.
+
+Patient consent — patient controls their own consent via their wallet. Consent can be revoked at any time, blocking future diagnosis uploads immediately.
+
+Emergency access — admin can access records in emergencies, with the access reason permanently logged on-chain.
+
+Second opinion — primary doctor can request a second opinion from another doctor, granting them temporary read access.
+
+**On-chain record per diagnosis:**
+
+| Field | Type | Description |
+|---|---|---|
+| imageHash | bytes32 | SHA-256 of retinal image |
+| diagnosisResult | bool | true = DR detected |
+| confidenceScore | uint | 0–100 (model confidence %) |
+| modelVersionHash | bytes32 | SHA-256 of model file |
+| doctorId | address | Uploading doctor's wallet |
+| timestamp | uint | Block timestamp |
+| reviewedByDoctor | bool | Pending review flag |
 
 ---
 
 ## Next Steps
 
-1. Threshold tuning to improve DR recall to 90%+ for clinical screening use.
-2. Re-introduce blockchain layer (smart contract + Web3 bridge), informed by v1's design, with improvements.
+1. Deploy smart contract to private Hardhat network
+2. Build Web3.py bridge — patient registration, consent, diagnosis upload, doctor decision, tamper verification
+3. Integrate DL model inference with blockchain pipeline end-to-end
