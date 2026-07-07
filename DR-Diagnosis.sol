@@ -55,7 +55,6 @@ contract DRDiagnosisResults {
     mapping(uint => mapping(bytes32 => bool)) private diagnosisHashExists;
     mapping(uint => Consent) private patientConsent;
     mapping(uint => address) private secondOpinionDoctor;
-    mapping(address => bool) private isAuthorizedDoctor;
 
 
     // ─── Errors ──────────────────────────────────────────────────────────────
@@ -117,6 +116,17 @@ contract DRDiagnosisResults {
         if (!patientExists[_patientId]) revert PatientNotFound();
 
         address oldDoctor = patientIdToPatient[_patientId].doctorId;
+        
+        // Purane doctor se remove karo
+        uint[] storage oldPatients = doctorToPatientId[oldDoctor];
+        for (uint i = 0; i < oldPatients.length; i++) {
+            if (oldPatients[i] == _patientId) {
+                oldPatients[i] = oldPatients[oldPatients.length - 1];
+                oldPatients.pop();
+                break;
+            }
+        }
+        
         patientIdToPatient[_patientId].doctorId = _newDoctor;
         doctorToPatientId[_newDoctor].push(_patientId);
 
@@ -128,10 +138,6 @@ contract DRDiagnosisResults {
     external onlyOwner returns (Diagnosis[] memory) {
         emit EmergencyAccessLog(_patientId, msg.sender, reason, block.timestamp);
         return patientToDiagnosis[_patientId];
-    }
-
-    function authorizeExternalDoctor(address doctor) external onlyOwner {
-        isAuthorizedDoctor[doctor] = true;
     }
 
     // ─── Patient Functions ───────────────────────────────────────────────────
@@ -220,12 +226,17 @@ contract DRDiagnosisResults {
 
     // ─── View Functions ──────────────────────────────────────────────────────
 
+    function viewRecords(uint _patientId) external view returns (Diagnosis[] memory) {
+        if (msg.sender != owner && msg.sender != patientIdToPatient[_patientId].doctorId) {
+            revert NotAuthorized();
+        }
+        return patientToDiagnosis[_patientId];
+    }
+
     function viewDoctorDecisions(uint _patientId) external view returns (DoctorDecision[] memory) {
-        bool isAdmin = msg.sender == owner;
-        bool isAssignedDoctor = msg.sender == patientIdToPatient[_patientId].doctorId;
-        bool isPatient = msg.sender == patientIdToPatient[_patientId].patientAddress;
-        
-        if (!isAdmin && !isAssignedDoctor && !isPatient) revert NotAuthorized();
+        if (msg.sender != owner && msg.sender != patientIdToPatient[_patientId].doctorId) {
+            revert NotAuthorized();
+        }
         return patientToDoctorDecision[_patientId];
     }
 
@@ -250,31 +261,14 @@ contract DRDiagnosisResults {
         return patientConsent[patientId].given;
     }
 
-    function viewRecords(uint _patientId) external view returns (Diagnosis[] memory) {
-        address assignedDoctor = patientIdToPatient[_patientId].doctorId;
-        
-        bool isAdmin = msg.sender == owner;
-        bool isAssignedDoctor = msg.sender == assignedDoctor;
-        bool isExternalWithConsent = isAuthorizedDoctor[msg.sender] && patientConsent[_patientId].given;
-        bool isSecondOpinionDoctor = secondOpinionDoctor[_patientId] == msg.sender; // ← yeh add karo
-        
-        if (!isAdmin && !isAssignedDoctor && !isExternalWithConsent && !isSecondOpinionDoctor) 
-            revert NotAuthorized();
-        
-        return patientToDiagnosis[_patientId];
-    }
-    
+    // Patient can view its records only
     function viewMyRecords(uint _patientId) external view returns (Diagnosis[] memory) {
         if (patientIdToPatient[_patientId].patientAddress != msg.sender) revert NotAuthorized();
         return patientToDiagnosis[_patientId];
     }
 
-    function isPatientRegistered(uint patientId) external view returns (bool) {
-        return patientExists[patientId];
-    }
-
-    function getPatientAddress(uint patientId) external view returns (address) {
+    function getPatientDoctor(uint patientId) external view returns (address) {
         if (!patientExists[patientId]) revert PatientNotFound();
-        return patientIdToPatient[patientId].patientAddress;
+        return patientIdToPatient[patientId].doctorId;
     }
 }
