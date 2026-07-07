@@ -69,7 +69,7 @@ contract DRDiagnosisResults {
 
     // ─── Events ──────────────────────────────────────────────────────────────
 
-    event PatientRegistered(uint patientId, address doctorAddress);
+    event PatientRegistered(uint patientId, address doctorAddress, address patientAddress);
     event DiagnosisUploaded(uint patientId, address doctorId, bool diagnosisResult, uint confidenceScore, uint timestamp);
     event DoctorDecisionRecorded(uint patientId, bool doctorResult, bool agreedWithAI, uint timestamp);
     event DoctorReassigned(uint patientId, address oldDoctor, address newDoctor);
@@ -109,7 +109,7 @@ contract DRDiagnosisResults {
         );
         doctorToPatientId[_doctorAddress].push(_patientId);
 
-        emit PatientRegistered(_patientId, _doctorAddress);
+        emit PatientRegistered(_patientId, _doctorAddress, _patientAddress);
     }
 
     function reassignDoctor(uint256 _patientId, address _newDoctor) external onlyOwner {
@@ -234,9 +234,12 @@ contract DRDiagnosisResults {
     }
 
     function viewDoctorDecisions(uint _patientId) external view returns (DoctorDecision[] memory) {
-        if (msg.sender != owner && msg.sender != patientIdToPatient[_patientId].doctorId) {
-            revert NotAuthorized();
-        }
+        bool isAdmin = msg.sender == owner;
+        bool isAssignedDoctor = msg.sender == patientIdToPatient[_patientId].doctorId;
+        bool isPatient = msg.sender == patientIdToPatient[_patientId].patientAddress;
+        
+        if (!isAdmin && !isAssignedDoctor && !isPatient) revert NotAuthorized();
+        
         return patientToDoctorDecision[_patientId];
     }
 
@@ -270,5 +273,14 @@ contract DRDiagnosisResults {
     function getPatientDoctor(uint patientId) external view returns (address) {
         if (!patientExists[patientId]) revert PatientNotFound();
         return patientIdToPatient[patientId].doctorId;
+    }
+
+    function getPatientAddress(uint patientId) external view returns (address) {
+        if (!patientExists[patientId]) revert PatientNotFound();
+        return patientIdToPatient[patientId].patientAddress;
+    }
+
+    function isPatientRegistered(uint patientId) external view returns (bool) {
+        return patientExists[patientId];
     }
 }
