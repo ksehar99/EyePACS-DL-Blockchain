@@ -1,7 +1,7 @@
 # EyePACS-DL-Blockchain
 ## Diabetic Retinopathy Early Diagnosis — Deep Learning + Blockchain Pipeline (v2)
 
-A restructured iteration of an earlier internship project combining Deep Learning and Blockchain for secure, tamper-proof diabetic retinopathy screening. This version rebuilds the DL component from scratch on a new dataset with a binary classification approach, and introduces a significantly improved smart contract architecture.
+A restructured iteration of an earlier internship project combining Deep Learning and Blockchain for secure, tamper-proof diabetic retinopathy screening. This version rebuilds the DL component from scratch on a new dataset with a binary classification approach, and integrates a significantly improved smart contract architecture with a fully working CLI-based pipeline.
 
 Previous version (v1): https://github.com/ksehar99/DL_Blockchain_Pipeline_For_DR_EarlyDiagnosis
 
@@ -12,8 +12,9 @@ Previous version (v1): https://github.com/ksehar99/DL_Blockchain_Pipeline_For_DR
 | Component | Status |
 |---|---|
 | Deep Learning Model | Complete |
-| Smart Contract | Written, pending deployment |
-| Web3 Python Bridge | In progress |
+| Smart Contract | Complete — deployed on private network |
+| Web3 Python Bridge + CLI | Complete |
+| DL + Blockchain Integration | Complete |
 
 ---
 
@@ -54,26 +55,24 @@ Threshold was lowered to 0.30 because in a clinical screening context, missing a
 **Contract:** `DRDiagnosisResults.sol`
 
 **Architecture:**   
-Admin → registers patient + assigns doctor   
-Patient → gives/revokes consent    
-Doctor → uploads AI diagnosis + records own decision   
-Anyone authorized → verifies tamper-proof hash on-chain   
+Admin    → registers patients, assigns doctors, reassigns doctors   
+Doctor   → uploads AI diagnosis, records own clinical decision   
+Patient  → views own records and doctor decisions, manages cross-hospital consent   
+System   → verifies tamper-proof hash on-chain after every diagnosis   
 
 **Key features:**
 
-Role-based access control — three distinct roles (admin, doctor, patient) with enforced separation. Admin cannot upload diagnoses. Doctor cannot register patients. Patient consent cannot be given by anyone else.
+Role-based access control — three distinct roles (admin, doctor, patient) with enforced separation at the contract level. Admin cannot upload diagnoses. Doctors cannot register patients. Patient consent cannot be given by anyone other than the patient.
 
-AI provenance logging — every on-chain diagnosis record includes the image hash, model version hash, prediction result, and confidence score. Any change to the image or model is detectable.
+AI provenance logging — every on-chain diagnosis record includes the retinal image hash, model version hash, prediction result, and confidence score. Any change to the image or the model is immediately detectable.
 
-Human-in-the-loop — AI prediction and doctor decision are two separate on-chain transactions. Doctor explicitly records whether they agreed with or overrode the model.
+Human-in-the-loop — AI prediction and doctor decision are two separate on-chain transactions. The doctor explicitly records whether they agreed with or overrode the model, along with optional clinical notes. No diagnosis is treated as final without this sign-off.
 
-Pending review tracking — every uploaded diagnosis is flagged as unreviewed until the doctor records their decision. `isReviewed()` and `DiagnosisUploaded` events allow off-chain monitoring without expensive on-chain loops.
+Patient consent — patient controls cross-hospital data sharing consent via their own wallet. Admin cannot grant or revoke this on the patient's behalf. Consent can be revoked at any time.
 
-Patient consent — patient controls their own consent via their wallet. Consent can be revoked at any time, blocking future diagnosis uploads immediately.
+Second opinion — the assigned doctor can request a second opinion from another doctor, granting them read access to that patient's records.
 
-Emergency access — admin can access records in emergencies, with the access reason permanently logged on-chain.
-
-Second opinion — primary doctor can request a second opinion from another doctor, granting them temporary read access.
+Tamper verification — the SHA-256 hash of the retinal image is recomputed and checked against the on-chain record at any time to confirm the image has not been modified since diagnosis.
 
 **On-chain record per diagnosis:**
 
@@ -89,8 +88,31 @@ Second opinion — primary doctor can request a second opinion from another doct
 
 ---
 
-## Next Steps
+## Pipeline
 
-1. Deploy smart contract to private Hardhat network
-2. Build Web3.py bridge — patient registration, consent, diagnosis upload, doctor decision, tamper verification
-3. Integrate DL model inference with blockchain pipeline end-to-end
+The full end-to-end flow runs through a CLI interface:   
+Admin registers patient → assigns doctor → patient gets account number   
+↓   
+Doctor selects patient → system picks unused retinal image automatically   
+↓   
+MobileNetV2 runs inference → result + confidence displayed on screen   
+↓   
+Doctor reviews → agrees or overrides → notes added (optional)   
+↓   
+AI prediction + doctor decision written to blockchain (two transactions)   
+↓   
+Tamper verification runs automatically — image hash checked on-chain   
+↓   
+Patient logs in → views diagnosis records and doctor decisions   
+
+---
+
+## Limitations
+
+Authentication is simulated via account number selection. In production, each participant would authenticate using a private key signature.
+
+The system runs on a local Hardhat network — blockchain state does not persist across sessions. A production deployment would run on a persistent private network across multiple hospital nodes.
+
+Patient personal details are not stored on-chain. A production system would pair the blockchain with an encrypted off-chain database, with the smart contract enforcing access control at the API level.
+
+Cross-hospital consent and external doctor authorization are implemented in the smart contract but require a multi-hospital network to demonstrate meaningfully.
