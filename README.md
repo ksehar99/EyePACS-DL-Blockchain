@@ -115,4 +115,6 @@ The system runs on a local Hardhat network — blockchain state does not persist
 
 Patient personal details are not stored on-chain. A production system would pair the blockchain with an encrypted off-chain database, with the smart contract enforcing access control at the API level.
 
+Second opinion is implemented in the smart contract but not yet surfaced in the CLI — planned as a next step.
+
 Cross-hospital consent and external doctor authorization are implemented in the smart contract but require a multi-hospital network to demonstrate meaningfully.
