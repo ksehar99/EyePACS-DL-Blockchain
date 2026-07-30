@@ -43,6 +43,14 @@ contract DRDiagnosisResults {
         uint timestamp;
     }
 
+    struct SecondOpinion {
+        uint patientId;
+        bool agreesWithPrimary;
+        string notes;
+        address secondDoctorId;
+        uint timestamp;
+    }
+
     // ─── State Variables ─────────────────────────────────────────────────────
 
     address immutable owner;
@@ -56,6 +64,7 @@ contract DRDiagnosisResults {
     mapping(uint => Consent) private patientConsent;
     mapping(uint => address) private secondOpinionDoctor;
     mapping(address => bool) private isAuthorizedDoctor;
+    mapping(uint => SecondOpinion[]) private patientToSecondOpinion;
 
 
     // ─── Errors ──────────────────────────────────────────────────────────────
@@ -78,6 +87,7 @@ contract DRDiagnosisResults {
     event ConsentRevoked(uint patientId, uint timestamp);
     event EmergencyAccessLog(uint patientId, address admin, string reason, uint timestamp);
     event SecondOpinionRequested(uint patientId, address secondDoctor, uint timestamp);
+    event SecondOpinionRecorded(uint patientId, address secondDoctorId, bool agreesWithPrimary, uint timestamp);
 
     // ─── Modifier ────────────────────────────────────────────────────────────
 
@@ -210,6 +220,37 @@ contract DRDiagnosisResults {
         );
 
         emit DoctorDecisionRecorded(patientId, doctorResult, agreedWithAI, block.timestamp);
+    }
+
+    function recordSecondOpinion(
+        uint patientId,
+        bool agreesWithPrimary,
+        string calldata notes
+    ) external {
+        if (secondOpinionDoctor[patientId] != msg.sender) revert NotAuthorized();
+
+        uint total = patientToDiagnosis[patientId].length;
+        if (total == 0) revert NoDiagnosisFound();
+
+        patientToSecondOpinion[patientId].push(SecondOpinion({
+            patientId: patientId,
+            agreesWithPrimary: agreesWithPrimary,
+            notes: notes,
+            secondDoctorId: msg.sender,
+            timestamp: block.timestamp
+        }));
+
+        emit SecondOpinionRecorded(patientId, msg.sender, agreesWithPrimary, block.timestamp);
+    }
+
+    function viewSecondOpinions(uint _patientId) external view returns (SecondOpinion[] memory) {
+        bool isAdmin = msg.sender == owner;
+        bool isAssignedDoctor = msg.sender == patientIdToPatient[_patientId].doctorId;
+        bool isPatient = msg.sender == patientIdToPatient[_patientId].patientAddress;
+        bool isSecondDoctor = secondOpinionDoctor[_patientId] == msg.sender;
+
+        if (!isAdmin && !isAssignedDoctor && !isPatient && !isSecondDoctor) revert NotAuthorized();
+        return patientToSecondOpinion[_patientId];
     }
 
     function requestSecondOpinion(uint patientId, address secondDoctor) external {
