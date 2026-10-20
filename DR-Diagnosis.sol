@@ -88,7 +88,7 @@ contract DRDiagnosisResults {
     event EmergencyAccessLog(uint patientId, address admin, string reason, uint timestamp);
     event SecondOpinionRequested(uint patientId, address secondDoctor, uint timestamp);
     event SecondOpinionRecorded(uint patientId, address secondDoctorId, bool agreesWithPrimary, uint timestamp);
-
+    event DoctorOverrideLogged(uint patientId, address doctorId, bytes32 imageHash);
     // ─── Modifier ────────────────────────────────────────────────────────────
 
     modifier onlyOwner() {
@@ -220,6 +220,11 @@ contract DRDiagnosisResults {
         );
 
         emit DoctorDecisionRecorded(patientId, doctorResult, agreedWithAI, block.timestamp);
+        if (!agreedWithAI) {
+            uint total = patientToDiagnosis[patientId].length;
+            bytes32 imgHash = patientToDiagnosis[patientId][total - 1].imageHash;
+            emit DoctorOverrideLogged(patientId, msg.sender, imgHash);
+        }
     }
 
     function recordSecondOpinion(
