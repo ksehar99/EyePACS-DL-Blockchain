@@ -221,7 +221,6 @@ contract DRDiagnosisResults {
 
         emit DoctorDecisionRecorded(patientId, doctorResult, agreedWithAI, block.timestamp);
         if (!agreedWithAI) {
-            uint total = patientToDiagnosis[patientId].length;
             bytes32 imgHash = patientToDiagnosis[patientId][total - 1].imageHash;
             emit DoctorOverrideLogged(patientId, msg.sender, imgHash);
         }
